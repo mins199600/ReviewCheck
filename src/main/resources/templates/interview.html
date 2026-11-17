@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:text="${interview.repoName} + ' 모의면접'">모의면접</title>
+  <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<main class="wrap">
+  <h1>모의면접</h1>
+  <div class="meta">
+    <a th:href="${interview.repoUrl}" th:text="${interview.repoName}" target="_blank" rel="noopener">repo</a>
+    <span th:text="'읽은 파일 ' + ${interview.filesRead} + ' / ' + ${interview.readableFiles} + '개'"></span>
+    <span class="progress" th:if="${!interview.finished}"
+          th:text="'질문 ' + ${interview.currentQuestion} + ' / ' + ${interview.questionCount}"></span>
+    <span class="progress" th:if="${interview.finished}">면접 종료</span>
+  </div>
+
+  <div th:each="turn : ${interview.transcript}"
+       th:class="${turn.speaker.name() == 'CANDIDATE'} ? 'turn me' : 'turn'">
+    <div class="who" th:text="${turn.speaker.name() == 'CANDIDATE'} ? '나' : '면접관'"></div>
+    <div class="bubble" th:if="${turn.speaker.name() == 'CANDIDATE'}" th:text="${turn.text}"></div>
+    <div class="bubble md" th:unless="${turn.speaker.name() == 'CANDIDATE'}" th:text="${turn.text}"></div>
+  </div>
+
+  <div class="error" th:if="${error}" th:text="${error}"></div>
+
+  <form class="answer-box" method="post" th:unless="${interview.finished}"
+        th:action="@{/interview/{id}/answer(id=${interview.id})}" data-loading>
+    <textarea name="answer" required placeholder="실제 면접처럼 말하듯이 답변해 보세요."
+              th:text="${draft}" autofocus></textarea>
+    <div class="row">
+      <span class="hint" style="margin:0">
+        <span class="loading">면접관이 답변을 검토하는 중이에요…</span>
+        <span class="idle">Ctrl + Enter 로도 제출할 수 있어요.</span>
+      </span>
+      <button type="submit">답변 제출</button>
+    </div>
+  </form>
+
+  <div class="done" th:if="${interview.finished}">
+    <a th:href="@{/}">다른 레포로 다시 면접 보기</a>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script th:src="@{/app.js}"></script>
+</body>
+</html>

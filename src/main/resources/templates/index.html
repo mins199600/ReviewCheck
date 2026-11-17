@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReviewCheck 모의면접</title>
+  <link rel="stylesheet" th:href="@{/app.css}">
+</head>
+<body>
+<main class="wrap">
+  <h1>ReviewCheck 모의면접</h1>
+  <p class="sub">GitHub 레포 링크를 붙여넣으면 AI 면접관이 코드를 읽고 기술 면접을 진행해요.</p>
+
+  <div class="error" th:if="${error}" th:text="${error}"></div>
+
+  <div class="card">
+    <form class="start" method="post" th:action="@{/interview}" data-loading>
+      <input type="url" name="repoUrl" required placeholder="https://github.com/아이디/레포이름"
+             th:value="${repoUrl}" autofocus>
+      <button type="submit">면접 시작</button>
+    </form>
+    <p class="hint">
+      <span class="loading">레포를 읽고 첫 질문을 준비하는 중이에요… (30초 정도 걸릴 수 있어요)</span>
+      <span class="idle">공개 레포만 가능해요. 질문은 5개, 답변마다 피드백을 받고 마지막에 총평이 나와요.</span>
+    </p>
+  </div>
+</main>
+<script th:src="@{/app.js}"></script>
+</body>
+</html>

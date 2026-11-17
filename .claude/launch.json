@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "reviewcheck",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "C:/Users/mins1/OneDrive/Desktop/crud-practice/ReviewCheck/gradlew.bat", "-p", "C:/Users/mins1/OneDrive/Desktop/crud-practice/ReviewCheck", "bootRun"],
+      "port": 8080
+    }
+  ]
+}
