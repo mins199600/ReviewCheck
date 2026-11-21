@@ -20,6 +20,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -54,6 +57,14 @@ public class GithubRepoFetcher {
 
     private static final long MAX_FILE_BYTES = 100_000;
     private static final int MAX_TREE_LINES = 400;
+    /** 한 번에 동시에 받아올 파일 수 */
+    private static final int FETCH_BATCH = 16;
+
+    private final ExecutorService fetchPool = Executors.newFixedThreadPool(8, runnable -> {
+        Thread thread = new Thread(runnable, "github-fetch");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final RestClient rest;
     private final JsonMapper json = JsonMapper.builder().build();
@@ -104,21 +115,30 @@ public class GithubRepoFetcher {
                 .sorted(Comparator.comparingInt(this::priority).thenComparing(TreeEntry::path))
                 .toList();
 
+        // 우선순위 순서는 지키면서, 파일 내용은 묶음 단위로 동시에 받아온다
         List<RepoFile> files = new ArrayList<>();
         int usedChars = 0;
-        for (TreeEntry entry : candidates) {
-            if (files.size() >= maxFiles || usedChars >= maxChars) {
-                break;
+        outer:
+        for (int start = 0; start < candidates.size(); start += FETCH_BATCH) {
+            List<TreeEntry> batch = candidates.subList(start, Math.min(start + FETCH_BATCH, candidates.size()));
+            List<CompletableFuture<String>> contents = batch.stream()
+                    .map(entry -> CompletableFuture.supplyAsync(() -> getRaw(ref, branch, entry.path()), fetchPool))
+                    .toList();
+            for (int i = 0; i < batch.size(); i++) {
+                if (files.size() >= maxFiles || usedChars >= maxChars) {
+                    contents.forEach(f -> f.cancel(true));
+                    break outer;
+                }
+                String content = contents.get(i).join();
+                if (content == null || content.isBlank()) {
+                    continue;
+                }
+                if (usedChars + content.length() > maxChars) {
+                    continue; // 너무 큰 파일은 건너뛰고 다음 파일을 본다
+                }
+                files.add(new RepoFile(batch.get(i).path(), content));
+                usedChars += content.length();
             }
-            String content = getRaw(ref, branch, entry.path());
-            if (content == null || content.isBlank()) {
-                continue;
-            }
-            if (usedChars + content.length() > maxChars) {
-                continue; // 너무 큰 파일은 건너뛰고 다음 파일을 본다
-            }
-            files.add(new RepoFile(entry.path(), content));
-            usedChars += content.length();
         }
 
         String treeListing = blobs.stream()
@@ -203,7 +223,7 @@ public class GithubRepoFetcher {
         } catch (HttpClientErrorException.Forbidden | HttpClientErrorException.TooManyRequests e) {
             throw new RepoFetchException("GitHub API 요청 한도를 넘었어요. 잠시 후 다시 하거나 GITHUB_TOKEN 환경변수를 설정해 주세요.");
         } catch (RestClientException e) {
-            throw new RepoFetchException("GitHub에 연결하지 못했어요: " + e.getMessage());
+            throw new RepoFetchException("GitHub에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
         }
     }
 

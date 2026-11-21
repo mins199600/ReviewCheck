@@ -1,6 +1,7 @@
 package com.moredr.reviewcheck.interview;
 
 import com.moredr.reviewcheck.github.RepoFetchException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,9 +25,11 @@ public class InterviewController {
     }
 
     @PostMapping("/interview")
-    public String start(@RequestParam("repoUrl") String repoUrl, Model model) {
+    public String start(@RequestParam("repoUrl") String repoUrl,
+                        @RequestParam(value = "accessCode", required = false) String accessCode,
+                        HttpServletRequest request, Model model) {
         try {
-            InterviewSession session = interviewService.start(repoUrl);
+            InterviewSession session = interviewService.start(repoUrl, request.getRemoteAddr(), accessCode);
             return "redirect:/interview/" + session.getId();
         } catch (RepoFetchException | InterviewException e) {
             model.addAttribute("error", e.getMessage());

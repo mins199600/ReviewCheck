@@ -17,6 +17,8 @@
     <form class="start" method="post" th:action="@{/interview}" data-loading>
       <input type="url" name="repoUrl" required placeholder="https://github.com/아이디/레포이름"
              th:value="${repoUrl}" autofocus>
+      <input type="password" name="accessCode" required placeholder="접속 코드" autocomplete="off"
+             maxlength="100" style="flex: 0 1 160px">
       <button type="submit">면접 시작</button>
     </form>
     <p class="hint">

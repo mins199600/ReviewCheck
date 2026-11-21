@@ -35,3 +35,9 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Secrets (절대 커밋 금지) ###
+*.pem
+*.key
+.env
+*.env

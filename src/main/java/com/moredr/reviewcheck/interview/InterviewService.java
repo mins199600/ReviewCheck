@@ -15,9 +15,13 @@ import com.anthropic.models.messages.OutputConfig;
 import com.anthropic.models.messages.StopReason;
 import com.moredr.reviewcheck.github.GithubRepoFetcher;
 import com.moredr.reviewcheck.github.RepoSnapshot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,6 +30,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class InterviewService {
+
+    private static final Logger log = LoggerFactory.getLogger(InterviewService.class);
 
     private static final String SYSTEM_PROMPT = """
             당신은 IT 회사의 시니어 개발자 면접관입니다. 지원자가 자신의 GitHub 레포를 제출했고, \
@@ -58,13 +64,25 @@ public class InterviewService {
     private final AnthropicClient client;
     private final String clientError;
     private final Map<String, InterviewSession> sessions = new ConcurrentHashMap<>();
+    private final UsageGuard usageGuard;
+    private final int maxAnswerChars;
+    private final int maxActiveSessions;
+    private final Duration sessionTtl;
 
     public InterviewService(GithubRepoFetcher fetcher,
+                            UsageGuard usageGuard,
                             @Value("${interview.model:claude-opus-5-5}") String model,
-                            @Value("${interview.question-count:5}") int questionCount) {
+                            @Value("${interview.question-count:5}") int questionCount,
+                            @Value("${interview.max-answer-chars:3000}") int maxAnswerChars,
+                            @Value("${interview.max-active-sessions:50}") int maxActiveSessions,
+                            @Value("${interview.session-ttl-minutes:120}") long sessionTtlMinutes) {
         this.fetcher = fetcher;
+        this.usageGuard = usageGuard;
         this.model = model;
         this.questionCount = questionCount;
+        this.maxAnswerChars = maxAnswerChars;
+        this.maxActiveSessions = maxActiveSessions;
+        this.sessionTtl = Duration.ofMinutes(sessionTtlMinutes);
         AnthropicClient created = null;
         String error = null;
         try {
@@ -80,8 +98,14 @@ public class InterviewService {
         return Optional.ofNullable(sessions.get(id));
     }
 
-    public InterviewSession start(String repoUrl) {
+    public InterviewSession start(String repoUrl, String clientIp, String accessCode) {
         requireClient();
+        removeExpiredSessions();
+        if (sessions.size() >= maxActiveSessions) {
+            throw new InterviewException("지금 진행 중인 면접이 많아요. 잠시 후 다시 시도해 주세요.");
+        }
+        // 비용이 드는 작업(GitHub 읽기, Claude 호출) 전에 접속 코드와 사용 횟수부터 확인한다
+        usageGuard.checkAndCountStart(clientIp, accessCode);
         RepoSnapshot repo = fetcher.fetch(repoUrl);
 
         InterviewSession session = new InterviewSession(UUID.randomUUID().toString(), repo.fullName(),
@@ -105,6 +129,9 @@ public class InterviewService {
                 .orElseThrow(() -> new InterviewException("면접을 찾을 수 없어요. 서버를 다시 켜면 기록이 사라져요."));
         if (answerText == null || answerText.isBlank()) {
             throw new InterviewException("답변을 입력해 주세요.");
+        }
+        if (answerText.length() > maxAnswerChars) {
+            throw new InterviewException("답변은 " + maxAnswerChars + "자까지 쓸 수 있어요. (지금 " + answerText.length() + "자)");
         }
 
         synchronized (session) {
@@ -139,10 +166,12 @@ public class InterviewService {
     private String ask(InterviewSession session) {
         MessageCreateParams params = MessageCreateParams.builder()
                 .model(model)
-                .maxTokens(16000L)
+                // 응답 길이 상한: 한 번의 호출에서 쓸 수 있는 출력 비용의 최대치를 정한다
+                .maxTokens(6000L)
                 .system(SYSTEM_PROMPT)
                 .messages(session.apiMessages())
-                .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.MEDIUM).build())
+                // 생각 깊이를 낮춰 응답 속도를 높인다 (면접 질문/피드백은 low로도 충분)
+                .outputConfig(OutputConfig.builder().effort(OutputConfig.Effort.LOW).build())
                 // 레포 내용이 매 요청 앞부분에 반복되므로 캐시해서 비용과 시간을 줄인다
                 .cacheControl(CacheControlEphemeral.builder().build())
                 // 안전 분류기가 요청을 거절하면 서버가 다른 모델로 자동 재시도
@@ -154,13 +183,17 @@ public class InterviewService {
         try {
             response = client.messages().create(params);
         } catch (UnauthorizedException e) {
+            log.error("Claude API 인증 실패 (API 키 확인 필요)");
             throw new InterviewException("Claude API 키가 없거나 올바르지 않아요. ANTHROPIC_API_KEY 환경변수를 설정하고 서버를 다시 실행해 주세요.");
         } catch (RateLimitException e) {
             throw new InterviewException("Claude API 요청이 많아 잠시 막혔어요. 조금 뒤에 다시 시도해 주세요.");
         } catch (AnthropicServiceException e) {
-            throw new InterviewException("Claude API 오류(" + e.statusCode() + "): " + e.getMessage());
+            // 자세한 오류는 서버 로그에만 남기고, 화면에는 상태 코드만 보여 준다
+            log.error("Claude API 오류: status={}", e.statusCode(), e);
+            throw new InterviewException("Claude API 오류가 발생했어요. (코드 " + e.statusCode() + ") 잠시 후 다시 시도해 주세요.");
         } catch (AnthropicException e) {
-            throw new InterviewException("Claude API에 연결하지 못했어요: " + e.getMessage());
+            log.error("Claude API 연결 실패", e);
+            throw new InterviewException("Claude API에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
         }
 
         if (response.stopReason().filter(StopReason.REFUSAL::equals).isPresent()) {
@@ -179,6 +212,12 @@ public class InterviewService {
         // thinking 블록까지 포함해 응답을 그대로 대화 기록에 넣는다
         session.apiMessages().add(response.toParam());
         return text;
+    }
+
+    /** 오래된 면접을 메모리에서 지워서, 면접이 무한히 쌓이지 않게 한다 */
+    private void removeExpiredSessions() {
+        LocalDateTime cutoff = LocalDateTime.now().minus(sessionTtl);
+        sessions.values().removeIf(s -> s.getCreatedAt().isBefore(cutoff));
     }
 
     private static MessageParam userMessage(String text) {

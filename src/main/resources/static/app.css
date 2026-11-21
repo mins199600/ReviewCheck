@@ -41,7 +41,7 @@ h1 { font-size: 1.6rem; margin: 0 0 4px; }
   padding: 20px;
 }
 form.start { display: flex; gap: 8px; flex-wrap: wrap; }
-input[type=url], textarea {
+input[type=url], input[type=password], textarea {
   flex: 1 1 320px;
   width: 100%;
   padding: 12px 14px;

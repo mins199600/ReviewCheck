@@ -28,7 +28,7 @@
 
   <form class="answer-box" method="post" th:unless="${interview.finished}"
         th:action="@{/interview/{id}/answer(id=${interview.id})}" data-loading>
-    <textarea name="answer" required placeholder="실제 면접처럼 말하듯이 답변해 보세요."
+    <textarea name="answer" required maxlength="3000" placeholder="실제 면접처럼 말하듯이 답변해 보세요. (최대 3000자)"
               th:text="${draft}" autofocus></textarea>
     <div class="row">
       <span class="hint" style="margin:0">
