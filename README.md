@@ -308,7 +308,7 @@ setx INTERVIEW_ACCESS_CODE "내가-정한-접속-코드"
 ./gradlew bootRun
 ```
 
-[http://localhost:8080](http://3.39.27.205:8080/) 에서 레포 링크와 접속 코드를 입력합니다.
+http://3.39.27.205:8080/ 에서 레포 링크와 접속 코드를 입력합니다.
 
 ### 서버 (AWS EC2)
 
