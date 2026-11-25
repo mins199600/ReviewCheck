@@ -41,7 +41,7 @@ h1 { font-size: 1.6rem; margin: 0 0 4px; }
   padding: 20px;
 }
 form.start { display: flex; gap: 8px; flex-wrap: wrap; }
-input[type=url], input[type=password], textarea {
+input[type=url], input[type=password], input[type=text], textarea {
   flex: 1 1 320px;
   width: 100%;
   padding: 12px 14px;
@@ -94,3 +94,21 @@ button:disabled { opacity: .6; cursor: wait; }
 .done a { color: var(--accent); font-weight: 600; }
 .loading { display: none; color: var(--muted); }
 .loading.on { display: inline; }
+
+/* 접속 코드 칸: 눈 아이콘을 입력 칸 안쪽 오른쪽에 겹쳐 놓는다 */
+.code-field { position: relative; display: flex; flex: 0 1 190px; }
+.code-field input { flex: 1 1 auto; padding-right: 40px; }
+.toggle-code {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  padding: 4px;
+  background: none;
+  color: var(--muted);
+}
+.toggle-code:hover { color: var(--text); }
+.toggle-code .eye-off { display: none; }
+.toggle-code.showing .eye-open { display: none; }
+.toggle-code.showing .eye-off { display: block; }
